@@ -39,20 +39,27 @@ jQuery(function ($) {
   };
 
   var App = {
-    init: function (data) {
-      // this.todos = util.store('todos-jquery');
-      this.todos = data;
+    init: function (url) {
+      this.apiGet(url)
+        .then((data) => {
+          this.todos = data;
 
-      this.todoTemplate = Handlebars.compile($('#todo-template').html());
-      this.footerTemplate = Handlebars.compile($('#footer-template').html());
-      this.bindEvents();
+          this.todoTemplate = Handlebars.compile($('#todo-template').html());
+          this.footerTemplate = Handlebars.compile($('#footer-template').html());
+          this.bindEvents();
 
-      new Router({
-        '/:filter': function (filter) {
-          this.filter = filter;
-          this.render();
-        }.bind(this)
-      }).init('/all');
+          new Router({
+            '/:filter': function (filter) {
+              this.filter = filter;
+              this.render();
+            }.bind(this)
+
+          }).init('/all');
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+
     },
     bindEvents: function () {
       $('#new-todo').on('keyup', this.create.bind(this));
@@ -115,20 +122,52 @@ jQuery(function ($) {
 
       return this.todos;
     },
+    apiGet: function (url) {
+      return fetch(url)
+        .then((response) => {
+          return response.json();
+        });
+    },
+    apiDelete: function (url) {
+      return fetch(url, { method: 'DELETE' });
+    },
+    apiPut: function (url, body) {
+      return fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      }).then((response) => {
+        return response.json();
+      });
+    },
+    apiPost: function (url, body) {
+      return fetch(url, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      }).then((response) => {
+        return response.json();
+      });
+    },
     destroyCompleted: function () {
-      var app = this;
       var promises = [];
 
-      this.getCompletedTodos().forEach(function (todo) {
-        var promise = fetch(todo.url, { method: 'DELETE' });
+      this.getCompletedTodos().forEach((todo) => {
+        var promise = this.apiDelete(todo.url);
         promises.push(promise);
       });
 
       Promise.all(promises)
-        .then(function () {
-          app.todos = app.getActiveTodos();
-          app.filter = 'all';
-          app.render();
+        .then(() => {
+          this.todos = this.getActiveTodos();
+          this.filter = 'all';
+          this.render();
         })
         .catch(function (err) {
           console.error(err);
@@ -149,55 +188,33 @@ jQuery(function ($) {
       }
     },
     create: function (e) {
-      var app = this;
       var $input = $(e.target);
-      var val = $input.val().trim();
+      var title = $input.val().trim();
 
-      if (e.which !== ENTER_KEY || !val) {
+      if (e.which !== ENTER_KEY || !title) {
         return;
       }
 
-      fetch(api, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json, text/plain, */*',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          title: val,
-          completed: false
-        })
-      }).then((response) => {
-        return response.json();
-      }).then((data) => {
-        app.todos.push(data);
-        $input.val('');
-        app.render();
-      }).catch((err) => {
-        console.error(err);
-      });
+      this.apiPost(api, { title })
+        .then((data) => {
+          this.todos.push(data);
+          $input.val('');
+          this.render();
+        }).catch((err) => {
+          console.error(err);
+        });
 
     },
     toggle: function (e) {
-      var app = this;
       var i = this.getIndexFromEl(e.target);
-      /// PUT		      
-      this.todos[i].completed = !this.todos[i].completed;
 
-      fetch(this.todos[i].url, {
-        method: 'PUT',
-        headers: {
-          'Accept': 'application/json, text/plain, */*',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(this.todos[i])
-      }).then((response) => {
-        return response.json();
-      }).then(() => {
-        this.render();
-      }).catch((err) => {
-        console.error(err);
-      });
+      this.todos[i].completed = !this.todos[i].completed;
+      this.apiPut(this.todos[i].url, this.todos[i])
+        .then(() => {
+          this.render();
+        }).catch((err) => {
+          console.error(err);
+        });
 
     },
     editingMode: function (e) {
@@ -224,37 +241,25 @@ jQuery(function ($) {
         return;
       }
 
-      /// PUT
       if ($el.data('abort')) {
         $el.data('abort', false);
       }
       else {
         this.todos[i].title = val;
 
-        fetch(this.todos[i].url, {
-          method: 'PUT',
-          headers: {
-            'Accept': 'application/json, text/plain, */*',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(this.todos[i])
-        }).then((response) => {
-          return response.json();
-        }).then(() => {
-          this.render();
-        }).catch((err) => {
-          console.error(err);
-        });
+        this.apiPut(this.todos[i].url, this.todos[i])
+          .then(() => {
+            this.render();
+          }).catch((err) => {
+            console.error(err);
+          });
       }
 
-
-
-      // this.render();
     },
     destroy: function (e) {
       var i = this.getIndexFromEl(e.target);
 
-      fetch(this.todos[i].url, { method: 'DELETE' })
+      this.apiDelete(this.todos[i].url)
         .then(() => {
           this.todos.splice(i, 1);
           this.render();
@@ -268,16 +273,6 @@ jQuery(function ($) {
 
   let params = new URLSearchParams(location.search.slice(1));
   let api = params.get('api') || 'http://localhost:8080/api/items';
-
-  fetch(api)
-    .then((response) => {
-      return response.json();
-    })
-    .then((data) => {
-      App.init(data);
-    })
-    .catch((err) => {
-      console.error(err);
-    });
+  App.init(api);
 
 });
