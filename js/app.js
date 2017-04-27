@@ -11,7 +11,7 @@ jQuery(function ($) {
 
   var util = {
     uuid: function () {
-			/*jshint bitwise:false */
+      /*jshint bitwise:false */
       var i, random;
       var uuid = '';
 
@@ -39,8 +39,10 @@ jQuery(function ($) {
   };
 
   var App = {
-    init: function () {
-      this.todos = util.store('todos-jquery');
+    init: function (data) {
+      // this.todos = util.store('todos-jquery');
+      this.todos = data;
+
       this.todoTemplate = Handlebars.compile($('#todo-template').html());
       this.footerTemplate = Handlebars.compile($('#footer-template').html());
       this.bindEvents();
@@ -57,11 +59,11 @@ jQuery(function ($) {
       $('#toggle-all').on('change', this.toggleAll.bind(this));
       $('#footer').on('click', '#clear-completed', this.destroyCompleted.bind(this));
       $('#todo-list')
-				.on('change', '.toggle', this.toggle.bind(this))
-				.on('dblclick', 'label', this.editingMode.bind(this))
-				.on('keyup', '.edit', this.editKeyup.bind(this))
-				.on('focusout', '.edit', this.update.bind(this))
-				.on('click', '.destroy', this.destroy.bind(this));
+        .on('change', '.toggle', this.toggle.bind(this))
+        .on('dblclick', 'label', this.editingMode.bind(this))
+        .on('keyup', '.edit', this.editKeyup.bind(this))
+        .on('focusout', '.edit', this.update.bind(this))
+        .on('click', '.destroy', this.destroy.bind(this));
     },
     render: function () {
       var todos = this.getFilteredTodos();
@@ -70,7 +72,7 @@ jQuery(function ($) {
       $('#toggle-all').prop('checked', this.getActiveTodos().length === 0);
       this.renderFooter();
       $('#new-todo').focus();
-      util.store('todos-jquery', this.todos);
+      // util.store('todos-jquery', this.todos);
     },
     renderFooter: function () {
       var todoCount = this.todos.length;
@@ -86,7 +88,6 @@ jQuery(function ($) {
     },
     toggleAll: function (e) {
       var isChecked = $(e.target).prop('checked');
-
       this.todos.forEach(function (todo) {
         todo.completed = isChecked;
       });
@@ -115,12 +116,32 @@ jQuery(function ($) {
       return this.todos;
     },
     destroyCompleted: function () {
-      this.todos = this.getActiveTodos();
-      this.filter = 'all';
-      this.render();
+      var app = this;
+      var promises = [];
+
+      this.getCompletedTodos().forEach(function(todo) {
+        var promise = $.ajax({
+          type: 'DELETE',
+          url: todo.url,
+          contentType: 'application/json',
+          dataType: 'json'
+        });
+        promises.push(promise);
+      });
+
+      Promise.all(promises)
+        .then(function(){
+          app.todos = app.getActiveTodos();
+          app.filter = 'all';
+          app.render();
+        })
+        .catch(function(err){
+          console.error(err);
+
+        });
     },
-		// accepts an element from inside the `.item` div and
-		// returns the corresponding index in the `todos` array
+    // accepts an element from inside the `.item` div and
+    // returns the corresponding index in the `todos` array
     getIndexFromEl: function (el) {
       var id = $(el).closest('li').data('id');
       var todos = this.todos;
@@ -133,27 +154,59 @@ jQuery(function ($) {
       }
     },
     create: function (e) {
+      var app = this;
       var $input = $(e.target);
       var val = $input.val().trim();
 
       if (e.which !== ENTER_KEY || !val) {
         return;
       }
+      /// POST
+      // this.todos.push({
+      //   id: util.uuid(),
+      //   title: val,
+      //   completed: false
+      // });
 
-      this.todos.push({
-        id: util.uuid(),
-        title: val,
-        completed: false
+      $.ajax({
+        type: 'POST',
+        url: 'http://localhost:8080/api/items',
+        data: JSON.stringify({
+          title: val,
+          completed: false
+        }),
+        contentType: 'application/json',
+        dataType: 'json',
+        success: function (data) {
+          console.log(data);
+          app.todos.push(data);
+          $input.val('');
+          app.render();
+        },
       });
 
-      $input.val('');
-
-      this.render();
+      // $input.val('');
+      // this.render();
     },
     toggle: function (e) {
+      var app = this;
       var i = this.getIndexFromEl(e.target);
+      /// PUT		      
       this.todos[i].completed = !this.todos[i].completed;
-      this.render();
+
+      $.ajax({
+        type: 'PUT',
+        url: this.todos[i].url,
+        data: JSON.stringify(this.todos[i]),
+        contentType: 'application/json',
+        dataType: 'json',
+        success: function (data) {
+          console.log(data);
+          app.render();
+        },
+      });
+
+      // this.render();
     },
     editingMode: function (e) {
       var $input = $(e.target).closest('li').addClass('editing').find('.edit');
@@ -169,28 +222,73 @@ jQuery(function ($) {
       }
     },
     update: function (e) {
+      var app = this;
       var el = e.target;
       var $el = $(el);
       var val = $el.val().trim();
+      var i = this.getIndexFromEl(e.target);
 
       if (!val) {
         this.destroy(e);
         return;
       }
 
+      /// PUT
       if ($el.data('abort')) {
         $el.data('abort', false);
-      } else {
-        this.todos[this.getIndexFromEl(el)].title = val;
+      }
+      else {
+        this.todos[i].title = val;
+
+        $.ajax({
+          type: 'PUT',
+          url: this.todos[i].url,
+          data: JSON.stringify(this.todos[i]),
+          contentType: 'application/json',
+          dataType: 'json',
+          success: function (data) {
+            console.log(data);
+            app.render();
+          },
+        });
       }
 
-      this.render();
+
+
+      // this.render();
     },
     destroy: function (e) {
-      this.todos.splice(this.getIndexFromEl(e.target), 1);
+      /// DELETE
+      var app = this;
+      var i = this.getIndexFromEl(e.target);
+
+      $.ajax({
+        type: 'DELETE',
+        url: this.todos[i].url,
+        // data: JSON.stringify(this.todos[i]),
+        contentType: 'application/json',
+        dataType: 'json',
+        success: function (data) {
+          console.log(data);
+          app.todos.splice(i, 1);
+          app.render();
+        },
+      });
+
       this.render();
     }
   };
 
-  App.init();
+  /// GET
+  $.ajax({
+    type: 'GET',
+    url: 'http://localhost:8080/api/items',
+    contentType: 'application/json',
+    dataType: 'json',
+    success: function (data) {
+      console.log(data);
+      App.init(data);
+    },
+  });
+
 });
