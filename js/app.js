@@ -119,23 +119,18 @@ jQuery(function ($) {
       var app = this;
       var promises = [];
 
-      this.getCompletedTodos().forEach(function(todo) {
-        var promise = $.ajax({
-          type: 'DELETE',
-          url: todo.url,
-          contentType: 'application/json',
-          dataType: 'json'
-        });
+      this.getCompletedTodos().forEach(function (todo) {
+        var promise = fetch(todo.url, { method: 'DELETE' });
         promises.push(promise);
       });
 
       Promise.all(promises)
-        .then(function(){
+        .then(function () {
           app.todos = app.getActiveTodos();
           app.filter = 'all';
           app.render();
         })
-        .catch(function(err){
+        .catch(function (err) {
           console.error(err);
 
         });
@@ -161,32 +156,27 @@ jQuery(function ($) {
       if (e.which !== ENTER_KEY || !val) {
         return;
       }
-      /// POST
-      // this.todos.push({
-      //   id: util.uuid(),
-      //   title: val,
-      //   completed: false
-      // });
 
-      $.ajax({
-        type: 'POST',
-        url: 'http://localhost:8080/api/items',
-        data: JSON.stringify({
+      fetch(api, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
           title: val,
           completed: false
-        }),
-        contentType: 'application/json',
-        dataType: 'json',
-        success: function (data) {
-          console.log(data);
-          app.todos.push(data);
-          $input.val('');
-          app.render();
-        },
+        })
+      }).then((response) => {
+        return response.json();
+      }).then((data) => {
+        app.todos.push(data);
+        $input.val('');
+        app.render();
+      }).catch((err) => {
+        console.error(err);
       });
 
-      // $input.val('');
-      // this.render();
     },
     toggle: function (e) {
       var app = this;
@@ -194,19 +184,21 @@ jQuery(function ($) {
       /// PUT		      
       this.todos[i].completed = !this.todos[i].completed;
 
-      $.ajax({
-        type: 'PUT',
-        url: this.todos[i].url,
-        data: JSON.stringify(this.todos[i]),
-        contentType: 'application/json',
-        dataType: 'json',
-        success: function (data) {
-          console.log(data);
-          app.render();
+      fetch(this.todos[i].url, {
+        method: 'PUT',
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json'
         },
+        body: JSON.stringify(this.todos[i])
+      }).then((response) => {
+        return response.json();
+      }).then(() => {
+        this.render();
+      }).catch((err) => {
+        console.error(err);
       });
 
-      // this.render();
     },
     editingMode: function (e) {
       var $input = $(e.target).closest('li').addClass('editing').find('.edit');
@@ -222,7 +214,6 @@ jQuery(function ($) {
       }
     },
     update: function (e) {
-      var app = this;
       var el = e.target;
       var $el = $(el);
       var val = $el.val().trim();
@@ -240,16 +231,19 @@ jQuery(function ($) {
       else {
         this.todos[i].title = val;
 
-        $.ajax({
-          type: 'PUT',
-          url: this.todos[i].url,
-          data: JSON.stringify(this.todos[i]),
-          contentType: 'application/json',
-          dataType: 'json',
-          success: function (data) {
-            console.log(data);
-            app.render();
+        fetch(this.todos[i].url, {
+          method: 'PUT',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
           },
+          body: JSON.stringify(this.todos[i])
+        }).then((response) => {
+          return response.json();
+        }).then(() => {
+          this.render();
+        }).catch((err) => {
+          console.error(err);
         });
       }
 
@@ -258,37 +252,32 @@ jQuery(function ($) {
       // this.render();
     },
     destroy: function (e) {
-      /// DELETE
-      var app = this;
       var i = this.getIndexFromEl(e.target);
 
-      $.ajax({
-        type: 'DELETE',
-        url: this.todos[i].url,
-        // data: JSON.stringify(this.todos[i]),
-        contentType: 'application/json',
-        dataType: 'json',
-        success: function (data) {
-          console.log(data);
-          app.todos.splice(i, 1);
-          app.render();
-        },
-      });
+      fetch(this.todos[i].url, { method: 'DELETE' })
+        .then(() => {
+          this.todos.splice(i, 1);
+          this.render();
+        })
+        .catch((err) => {
+          console.error(err);
+        });
 
-      this.render();
     }
   };
 
-  /// GET
-  $.ajax({
-    type: 'GET',
-    url: 'http://localhost:8080/api/items',
-    contentType: 'application/json',
-    dataType: 'json',
-    success: function (data) {
-      console.log(data);
+  let params = new URLSearchParams(location.search.slice(1));
+  let api = params.get('api') || 'http://localhost:8080/api/items';
+
+  fetch(api)
+    .then((response) => {
+      return response.json();
+    })
+    .then((data) => {
       App.init(data);
-    },
-  });
+    })
+    .catch((err) => {
+      console.error(err);
+    });
 
 });
